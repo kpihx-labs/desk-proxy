@@ -94,6 +94,20 @@ desk-proxy admin purge    # wipe config dir
 
 ---
 
+## Config
+
+Defaults live in **`src/desk_proxy/config.py`**. Durable overrides:
+
+```
+~/.config/desk-proxy/config.json
+```
+
+created by `desk-proxy admin setup`. **No `.env` / `.env.example`** — there are no secrets.
+Optional process env overrides: `DESK_SHOT_DIR`, `DESK_INPUT_BACKEND`, `DESK_OCR_LANG`,
+`DESK_HITL_TIMEOUT`, `DESK_AUTOSAVE_DIR`, `DESK_CONFIG_DIR`.
+
+---
+
 ## Make
 
 ```bash

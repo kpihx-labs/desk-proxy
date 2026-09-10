@@ -1,6 +1,6 @@
 [project]
 name = "desk-proxy"
-version = "0.1.0"
+version = "0.1.1"
 description = "Non-MCP CLI proxy for Linux desktop automation — screenshots, input, OCR, HITL (tick/mail/tg ADN)"
 requires-python = ">=3.12"
 dependencies = [

@@ -1,12 +1,15 @@
 """
-desk-proxy configuration — ``config.json`` plus env overrides.
+desk-proxy configuration — single source of truth in ``config.py`` + ``config.json``.
 
 Architecture:
-  - ``DESK_CONFIG_DIR`` or ``~/.config/desk-proxy`` = config root
-  - ``config.json`` = durable settings (shot_dir, input_backend, …)
-  - process env vars override JSON keys (same DESK_* names as .env.example)
+  - Defaults live HERE (``default_config()`` / ``DEFAULT_*`` constants).
+  - Durable overrides: ``~/.config/desk-proxy/config.json`` (or ``DESK_CONFIG_DIR``).
+  - Optional process env overrides (not a ``.env`` file — no secrets exist):
+    ``DESK_SHOT_DIR``, ``DESK_INPUT_BACKEND``, ``DESK_OCR_LANG``,
+    ``DESK_HITL_TIMEOUT``, ``DESK_AUTOSAVE_DIR``, ``DESK_CONFIG_DIR``.
 
-No remote credentials: desk-proxy is local desktop automation only.
+There is no ``.env`` / ``.env.example``: desk-proxy has zero remote credentials.
+Settings are non-secret desktop preferences written by ``admin setup``.
 """
 
 from __future__ import annotations

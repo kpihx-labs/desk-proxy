@@ -1,6 +1,6 @@
 # desk-proxy — Architecture Contract
 
-**Version:** 0.1.0 · **Actions:** 24 · **ADN:** tick-proxy / mail-proxy / tg-proxy  
+**Version:** 0.1.1 · **Actions:** 24 · **ADN:** tick-proxy / mail-proxy / tg-proxy  
 **Ancestor:** `desk-mcp` v0.2.1 (MCP → non-MCP CLI refonte)  
 **Stack:** Python ≥3.12 · uv · Typer · Pydantic · Rich · Pillow · system tools (xdotool / ydotool / wtype / tesseract / portals)
 
@@ -146,14 +146,19 @@ Admin is **always JSON**. `--format` / `-o` → exit 2.
 
 ## Config
 
+Source of truth: **`src/desk_proxy/config.py`** (defaults + load/save) + durable JSON:
+
 ```
 ~/.config/desk-proxy/
   config.json     # shot_dir, input_backend, ocr_lang, hitl_timeout, autosave_dir
 ```
 
-Env overrides (see `.env.example`): `DESK_SHOT_DIR`, `DESK_INPUT_BACKEND`, `DESK_OCR_LANG`, `DESK_HITL_TIMEOUT`, `DESK_AUTOSAVE_DIR`, `DESK_CONFIG_DIR`.
+No `.env` / `.env.example` — desk-proxy has **zero secrets**. Optional process env
+overrides only (same keys as JSON): `DESK_SHOT_DIR`, `DESK_INPUT_BACKEND`,
+`DESK_OCR_LANG`, `DESK_HITL_TIMEOUT`, `DESK_AUTOSAVE_DIR`, `DESK_CONFIG_DIR`.
 
-Display injection for headless agent shells: `DISPLAY`, `WAYLAND_DISPLAY`, `DBUS_SESSION_BUS_ADDRESS`, `XDG_RUNTIME_DIR`, auto-discovered `XAUTHORITY` (Mutter).
+Display injection for headless agent shells: `DISPLAY`, `WAYLAND_DISPLAY`,
+`DBUS_SESSION_BUS_ADDRESS`, `XDG_RUNTIME_DIR`, auto-discovered `XAUTHORITY` (Mutter).
 
 CI / no-browser HITL: `DESK_PROXY_NO_BROWSER=1`.
 

@@ -11,9 +11,8 @@ venv/
 .ruff_cache/
 .pytest_cache/
 
-# Env
+# Env (desk-proxy has no secrets — config lives in config.json via config.py)
 .env
-!/.env.example
 
 # IDE
 .vscode/
