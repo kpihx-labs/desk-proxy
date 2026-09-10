@@ -66,8 +66,9 @@ Give AI agents **eyes and hands on the real Linux desktop** — without MCP plum
 
 ### Research deltas folded in (2026)
 
-- **Wayland input reality:** xdotool (XWayland) primary; ydotool / wtype fallbacks; absolute coords via DISPLAY discovery + Mutter `XAUTHORITY`
-- **Screenshot resilience:** portal often denied for non-interactive callers → gnome-screenshot → grim → ffmpeg x11grab
+- **Wayland window reality:** AT-SPI frames first (real apps); xdotool/wmctrl are XWayland-only fallbacks
+- **Wayland input reality:** xdotool (XWayland) primary; ydotool / wtype fallbacks; absolute coords via DISPLAY discovery + Mutter `XAUTHORITY` (auto-injected — no manual `export`)
+- **Screenshot resilience:** auto-grant PermissionStore → portal → gnome-screenshot → grim → ffmpeg (black X11grab rejected)
 - **OCR as coordinate oracle:** tesseract TSV lines with centers for `screen-find` → `mouse-click` loops
 - **No graphical-session systemd unit:** fire-and-forget CLI — never pull `graphical-session.target` (lesson `ISS-20260910-001` / whats-proxy)
 
@@ -88,7 +89,7 @@ Give AI agents **eyes and hands on the real Linux desktop** — without MCP plum
 
 | Action | HITL | Backend |
 |--------|------|---------|
-| `window-list` | no | xdotool (+ wmctrl enrich) |
+| `window-list` | no | AT-SPI (GNOME Wayland) → xdotool/wmctrl |
 | `window-get` | no | xdotool |
 | `window-focus` | no | xdotool windowactivate |
 | `window-activate` | no | alias of focus |
