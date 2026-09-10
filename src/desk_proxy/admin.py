@@ -142,10 +142,11 @@ def status() -> dict[str, Any]:
 
 
 def setup() -> dict[str, Any]:
-    """Ensure the config directory exists and write default ``config.json``.
+    """Ensure config dir, write default ``config.json``, grant Screenshot portal.
 
     Returns:
-        dict[str, Any]: Paths written and the default settings dict.
+        dict[str, Any]: Paths written, default settings, and portal permission
+        grant result.
 
     Examples:
         >>> r = setup()
@@ -156,12 +157,16 @@ def setup() -> dict[str, Any]:
         >>> "desk-proxy" in r["config_dir"]
         True
     """
+    from desk_proxy.api.screenshot import ensure_screenshot_permission
+
     ensure_config_dir()
     path = save_config(default_config())
+    portal = ensure_screenshot_permission()
     return {
         "config_dir": str(CONFIG_DIR),
         "config": str(path),
         "settings": default_config(),
+        "screenshot_portal": portal,
     }
 
 

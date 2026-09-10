@@ -1,16 +1,31 @@
 """
-Window discovery and control via xdotool (+ wmctrl when useful).
+Window discovery and control.
+
+Primary on GNOME Wayland: AT-SPI frames via system ``/usr/bin/python3``
+(PyGObject is not in the uv venv). Fallback: xdotool + wmctrl (XWayland only).
 """
 
 from __future__ import annotations
 
+import json
 import shutil
 from typing import Any
 
+from desk_proxy.api.atspi_script import ATSPI_LIST_WINDOWS_SCRIPT
 from desk_proxy.api.run import run_cmd
 from desk_proxy.exceptions import DeskProxyError
 
 _SKIP_NAMES = frozenset({"", "mutter guard window"})
+# Tiny GNOME/XWayland stubs that are not real user windows
+_SKIP_STUB_NAMES = frozenset(
+    {
+        "gnome shell",
+        "ibus-x11",
+        "ibus-xim",
+        "mutter-x11-frames",
+        "mutter guard window",
+    }
+)
 
 
 def _parse_geometry_shell(stdout: str) -> dict[str, int]:
@@ -68,21 +83,82 @@ def _window_dict(wid: str | int, name: str, geom: dict[str, int]) -> dict[str, A
     }
 
 
-def list_windows() -> list[dict[str, Any]]:
-    """List visible XWayland/X11 windows with geometry.
+def _is_stub_window(rec: dict[str, Any]) -> bool:
+    """Return True for tiny XWayland/GNOME stub windows to hide from listings.
 
-    Uses xdotool search, with a ``wmctrl -lG`` enrichment when available
-    (often surfaces titles xdotool alone misses).
+    Args:
+        rec (dict[str, Any]): Window record with ``name`` / ``width`` / ``height``.
 
     Returns:
-        list[dict[str, Any]]: Records ``{id, name, x, y, width, height}``.
-        Empty list when no backend finds windows (pure Wayland natives may
-        be absent).
+        bool: True when the window should be filtered out of user-facing lists.
 
     Examples:
-        >>> isinstance(list_windows(), list)
+        >>> _is_stub_window({"name": "GNOME Shell", "width": 1, "height": 1})
         True
-        >>> all("id" in w and "name" in w for w in list_windows()[:3]) or list_windows() == []
+        >>> _is_stub_window({"name": "Terminal", "width": 800, "height": 600})
+        False
+    """
+    name = str(rec.get("name") or "").strip().lower()
+    if name in _SKIP_STUB_NAMES or name in _SKIP_NAMES:
+        return True
+    w = int(rec.get("width") or 0)
+    h = int(rec.get("height") or 0)
+    return bool(w > 0 and h > 0 and w <= 32 and h <= 32)
+
+
+def _list_windows_atspi() -> list[dict[str, Any]]:
+    """List frames/windows via AT-SPI (system Python + PyGObject).
+
+    Returns:
+        list[dict[str, Any]]: AT-SPI window records (may be empty on failure).
+
+    Examples:
+        >>> isinstance(_list_windows_atspi(), list)
+        True
+        >>> all("backend" in w for w in _list_windows_atspi()[:1]) or True
+        True
+    """
+    r = run_cmd(["/usr/bin/python3", "-c", ATSPI_LIST_WINDOWS_SCRIPT], timeout=20)
+    raw = (r.stdout or "").strip()
+    if not raw:
+        return []
+    try:
+        payload = json.loads(raw)
+    except json.JSONDecodeError:
+        return []
+    if not payload.get("ok"):
+        return []
+    out: list[dict[str, Any]] = []
+    for win in payload.get("windows") or []:
+        if not isinstance(win, dict):
+            continue
+        rec = {
+            "id": int(win.get("id") or 0),
+            "name": str(win.get("name") or ""),
+            "app": str(win.get("app") or ""),
+            "role": str(win.get("role") or ""),
+            "x": int(win.get("x") or 0),
+            "y": int(win.get("y") or 0),
+            "width": int(win.get("width") or 0),
+            "height": int(win.get("height") or 0),
+            "backend": "atspi",
+        }
+        if _is_stub_window(rec):
+            continue
+        out.append(rec)
+    return out
+
+
+def _list_windows_x11() -> list[dict[str, Any]]:
+    """List X11/XWayland windows via xdotool (+ wmctrl enrichment).
+
+    Returns:
+        list[dict[str, Any]]: X11 window records (stubs filtered).
+
+    Examples:
+        >>> isinstance(_list_windows_x11(), list)
+        True
+        >>> all("id" in w for w in _list_windows_x11()[:1]) or True
         True
     """
     by_id: dict[int, dict[str, Any]] = {}
@@ -99,6 +175,11 @@ def list_windows() -> list[dict[str, Any]]:
             geom_r = run_cmd(["xdotool", "getwindowgeometry", "--shell", wid])
             geom = _parse_geometry_shell(geom_r.stdout or "")
             rec = _window_dict(wid, name, geom)
+            rec["backend"] = "xdotool"
+            rec["app"] = ""
+            rec["role"] = ""
+            if _is_stub_window(rec):
+                continue
             by_id[rec["id"]] = rec
 
     if shutil.which("wmctrl"):
@@ -121,25 +202,57 @@ def list_windows() -> list[dict[str, Any]]:
                 name = parts[7].strip()
                 if name in _SKIP_NAMES:
                     continue
+                rec = {
+                    "id": wid,
+                    "name": name,
+                    "app": "",
+                    "role": "",
+                    "x": x,
+                    "y": y,
+                    "width": w,
+                    "height": h,
+                    "backend": "wmctrl",
+                }
+                if _is_stub_window(rec):
+                    continue
                 if wid not in by_id:
-                    by_id[wid] = {
-                        "id": wid,
-                        "name": name,
-                        "x": x,
-                        "y": y,
-                        "width": w,
-                        "height": h,
-                    }
+                    by_id[wid] = rec
 
     return list(by_id.values())
 
 
+def list_windows() -> list[dict[str, Any]]:
+    """List visible windows with geometry (AT-SPI first, then X11 fallback).
+
+    On GNOME Wayland, xdotool/wmctrl only see XWayland stubs — AT-SPI is the
+    root fix for real app frames (title, app id, screen extents).
+
+    Returns:
+        list[dict[str, Any]]: Records ``{id, name, app, role, x, y, width,
+        height, backend}``. Empty list when no backend finds windows.
+
+    Examples:
+        >>> isinstance(list_windows(), list)
+        True
+        >>> all("id" in w and "name" in w for w in list_windows()[:3]) or list_windows() == []
+        True
+    """
+    atspi = _list_windows_atspi()
+    if atspi:
+        return atspi
+    return _list_windows_x11()
+
+
 def get_window(name_or_id: str | int) -> dict[str, Any] | None:
-    """Resolve a window by numeric id or partial name / class.
+    """Resolve a window by numeric id or partial name / app / class.
+
+    Prefers the unified ``list_windows()`` catalog (AT-SPI on Wayland) so
+    name lookups work for native Wayland frames. Falls back to xdotool
+    search for X11 ids when needed.
 
     Args:
         name_or_id (str | int): Window id, or substring matched against title
-            then WM_CLASS via xdotool search.
+            then app name.
 
     Returns:
         dict[str, Any] | None: Canonical window dict, or None when not found.
@@ -151,33 +264,57 @@ def get_window(name_or_id: str | int) -> dict[str, Any] | None:
         >>> w is None or "width" in w
         True
     """
-    wid: str | None = None
+    catalog = list_windows()
     if isinstance(name_or_id, int) or str(name_or_id).isdigit():
-        wid = str(int(name_or_id))
-    else:
-        needle = str(name_or_id)
-        for flag in ("--name", "--class"):
-            r = run_cmd(["xdotool", "search", flag, needle])
-            if r.returncode == 0 and (r.stdout or "").strip():
-                wid = r.stdout.strip().splitlines()[-1]
-                break
-        if wid is None:
-            # Fallback: scan listed windows for substring match
-            needle_l = needle.lower()
-            for win in list_windows():
-                if needle_l in str(win["name"]).lower():
-                    return win
+        target = int(name_or_id)
+        for win in catalog:
+            if int(win["id"]) == target:
+                return win
+        # X11 fallback for raw xdotool ids not in AT-SPI catalog
+        wid = str(target)
+        name_r = run_cmd(["xdotool", "getwindowname", wid])
+        if name_r.returncode != 0:
             return None
+        geom_r = run_cmd(["xdotool", "getwindowgeometry", "--shell", wid])
+        if geom_r.returncode != 0:
+            return None
+        rec = _window_dict(
+            wid,
+            (name_r.stdout or "").strip(),
+            _parse_geometry_shell(geom_r.stdout or ""),
+        )
+        rec["backend"] = "xdotool"
+        rec["app"] = ""
+        rec["role"] = ""
+        return rec
 
-    name_r = run_cmd(["xdotool", "getwindowname", wid])
-    if name_r.returncode != 0:
-        return None
-    geom_r = run_cmd(["xdotool", "getwindowgeometry", "--shell", wid])
-    if geom_r.returncode != 0:
-        return None
-    return _window_dict(
-        wid, (name_r.stdout or "").strip(), _parse_geometry_shell(geom_r.stdout or "")
-    )
+    needle = str(name_or_id).lower()
+    for win in catalog:
+        hay = f"{win.get('name', '')} {win.get('app', '')}".lower()
+        if needle in hay:
+            return win
+
+    # X11 search fallback
+    for flag in ("--name", "--class"):
+        r = run_cmd(["xdotool", "search", flag, str(name_or_id)])
+        if r.returncode == 0 and (r.stdout or "").strip():
+            wid = r.stdout.strip().splitlines()[-1]
+            name_r = run_cmd(["xdotool", "getwindowname", wid])
+            if name_r.returncode != 0:
+                continue
+            geom_r = run_cmd(["xdotool", "getwindowgeometry", "--shell", wid])
+            if geom_r.returncode != 0:
+                continue
+            rec = _window_dict(
+                wid,
+                (name_r.stdout or "").strip(),
+                _parse_geometry_shell(geom_r.stdout or ""),
+            )
+            rec["backend"] = "xdotool"
+            rec["app"] = ""
+            rec["role"] = ""
+            return rec
+    return None
 
 
 def _require_window(name_or_id: str | int) -> dict[str, Any]:

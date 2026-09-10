@@ -7,11 +7,19 @@ Order: XDG Desktop Portal (system python3 + dbus + GLib) → gnome-screenshot
 
 from __future__ import annotations
 
+import json
 import shutil
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from PIL import Image as PILImage
+from PIL import ImageStat
+
+from desk_proxy.api.atspi_script import (
+    GNOME_SCREEN_SIZE_SCRIPT,
+    PORTAL_PERMISSION_SCRIPT,
+)
 from desk_proxy.api.run import run_cmd
 from desk_proxy.api.windows import get_window
 from desk_proxy.config import display_env
@@ -69,8 +77,86 @@ def _ts() -> str:
     return datetime.now(UTC).strftime("%H%M%S_%f")[:10]
 
 
+def ensure_screenshot_permission() -> dict[str, Any]:
+    """Grant host/agent Screenshot portal permission via PermissionStore.
+
+    GNOME stores ``screenshot/screenshot`` permissions; empty app id defaults
+    to ``no``, which makes non-interactive portal calls return response=2.
+    This heals that root cause (same grant waveterm already had).
+
+    Returns:
+        dict[str, Any]: ``{ok: bool, ...}`` from the system Python helper.
+
+    Examples:
+        >>> isinstance(ensure_screenshot_permission().get("ok"), bool)
+        True
+        >>> "error" in ensure_screenshot_permission() or ensure_screenshot_permission().get("ok")
+        True
+    """
+    r = run_cmd(["/usr/bin/python3", "-c", PORTAL_PERMISSION_SCRIPT], timeout=10)
+    raw = (r.stdout or "").strip()
+    if not raw:
+        return {"ok": False, "error": "empty permission helper output"}
+    try:
+        return json.loads(raw)
+    except json.JSONDecodeError:
+        return {"ok": False, "error": raw[:200]}
+
+
+def _shot_is_usable(
+    path: Path, *, min_mean: float = 2.0, min_bytes: int = 80_000
+) -> bool:
+    """Reject near-black / empty captures (typical broken X11grab on Wayland).
+
+    Args:
+        path (Path): PNG path to inspect.
+        min_mean (float): Minimum mean luminance (0–255) to accept.
+        min_bytes (int): Minimum file size in bytes to accept.
+
+    Returns:
+        bool: True when the image looks like a real desktop capture.
+
+    Examples:
+        >>> from PIL import Image as I
+        >>> p = Path("/tmp/desk-proxy-shots/_usable_probe.png")
+        >>> I.new("RGB", (100, 80), "white").save(p)
+        >>> _shot_is_usable(p, min_bytes=10)
+        True
+        >>> I.new("RGB", (100, 80), "black").save(p)
+        >>> _shot_is_usable(p, min_bytes=10)
+        False
+    """
+    path = Path(path)
+    if not path.is_file():
+        return False
+    if path.stat().st_size < min_bytes:
+        # Tiny files can still be valid for tiny regions — check luminance
+        pass
+    try:
+        with PILImage.open(path) as img:
+            if img.width < 2 or img.height < 2:
+                return False
+            # Downscale for speed on 5k captures
+            sample = img.convert("L")
+            if sample.width * sample.height > 1_000_000:
+                sample = sample.resize(
+                    (max(1, sample.width // 8), max(1, sample.height // 8))
+                )
+            mean = float(ImageStat.Stat(sample).mean[0])
+    except OSError:
+        return False
+    if mean < min_mean:
+        return False
+    # Full-screen captures that are tiny AND dark are junk; tiny bright crops OK
+    return not (path.stat().st_size < min_bytes and mean < 15.0)
+
+
 def take_screenshot(dest: Path) -> Path:
-    """Capture a full-screen PNG into ``dest`` via portal / gnome / grim.
+    """Capture a full-screen PNG into ``dest`` via portal / gnome / grim / ffmpeg.
+
+    Root fixes vs desk-mcp:
+      - auto-grant Screenshot portal PermissionStore for host/agent callers
+      - reject near-black X11grab frames (do not return them as success)
 
     Args:
         dest (Path): Destination PNG path (parent dirs are created).
@@ -79,7 +165,7 @@ def take_screenshot(dest: Path) -> Path:
         Path: Absolute path of the written screenshot.
 
     Raises:
-        DeskAPIError: When every backend fails.
+        DeskAPIError: When every backend fails or only black frames are produced.
 
     Examples:
         >>> p = take_screenshot(Path("/tmp/desk-proxy-shots/_probe.png"))  # doctest: +SKIP
@@ -92,21 +178,29 @@ def take_screenshot(dest: Path) -> Path:
     dest.parent.mkdir(parents=True, exist_ok=True)
     errors: list[str] = []
 
+    perm = ensure_screenshot_permission()
+    if not perm.get("ok"):
+        errors.append(f"permission-grant: {perm.get('error', perm)}")
+
     # 1) XDG Desktop Portal via system python3 + dbus + GLib
     try:
+        dest.unlink(missing_ok=True)
         r = run_cmd(["/usr/bin/python3", "-c", PORTAL_SCRIPT], timeout=20)
         uri = (r.stdout or "").strip()
         if uri.startswith("file://"):
             src = Path(uri[len("file://") :])
             if src.exists():
                 shutil.copy2(src, dest)
-                return dest.resolve()
+                if _shot_is_usable(dest):
+                    return dest.resolve()
+                errors.append("portal: capture unusable (near-black/empty)")
+                dest.unlink(missing_ok=True)
         if uri:
             errors.append(f"portal uri unusable: {uri[:120]}")
         elif (r.stderr or "").strip():
             errors.append(f"portal: {(r.stderr or '').strip()[:200]}")
         else:
-            errors.append("portal: empty uri")
+            errors.append("portal: empty uri (denied or cancelled)")
     except DeskAPIError as exc:
         errors.append(f"portal: {exc}")
 
@@ -119,33 +213,57 @@ def take_screenshot(dest: Path) -> Path:
                 timeout=8,
                 capture=False,
             )
-            if r2.returncode == 0 and dest.exists() and dest.stat().st_size > 0:
+            if (
+                r2.returncode == 0
+                and dest.exists()
+                and dest.stat().st_size > 0
+                and _shot_is_usable(dest)
+            ):
                 return dest.resolve()
-            errors.append(f"gnome-screenshot rc={r2.returncode}")
+            errors.append(f"gnome-screenshot rc={r2.returncode} or unusable")
+            dest.unlink(missing_ok=True)
         except DeskAPIError as exc:
             errors.append(f"gnome-screenshot: {exc}")
 
-    # 3) grim (Wayland / wlroots)
+    # 3) grim (Wayland / wlroots — fails on Mutter, kept for other compositors)
     if shutil.which("grim"):
         try:
+            dest.unlink(missing_ok=True)
             r3 = run_cmd(["grim", str(dest)], timeout=12)
-            if r3.returncode == 0 and dest.exists() and dest.stat().st_size > 0:
+            if (
+                r3.returncode == 0
+                and dest.exists()
+                and dest.stat().st_size > 0
+                and _shot_is_usable(dest)
+            ):
                 return dest.resolve()
             errors.append(
                 f"grim rc={r3.returncode}: {(r3.stderr or r3.stdout or '').strip()[:200]}"
             )
+            dest.unlink(missing_ok=True)
         except DeskAPIError as exc:
             errors.append(f"grim: {exc}")
 
-    # 4) ffmpeg x11grab — XWayland root (improved fallback beyond desk-mcp)
+    # 4) ffmpeg x11grab — last resort; often black on GNOME Wayland (rejected)
     if shutil.which("ffmpeg"):
         try:
             w, h = 0, 0
-            geom = run_cmd(["xdotool", "getdisplaygeometry"], timeout=5)
-            if geom.returncode == 0:
-                parts = (geom.stdout or "").strip().split()
-                if len(parts) == 2 and all(p.isdigit() for p in parts):
-                    w, h = int(parts[0]), int(parts[1])
+            # Prefer GNOME logical ScreenSize when xdotool reports the XWayland root
+            gr = run_cmd(
+                ["/usr/bin/python3", "-c", GNOME_SCREEN_SIZE_SCRIPT], timeout=5
+            )
+            try:
+                gpayload = json.loads((gr.stdout or "").strip() or "{}")
+                if gpayload.get("ok"):
+                    w, h = int(gpayload["width"]), int(gpayload["height"])
+            except (json.JSONDecodeError, KeyError, TypeError, ValueError):
+                pass
+            if w <= 0 or h <= 0:
+                geom = run_cmd(["xdotool", "getdisplaygeometry"], timeout=5)
+                if geom.returncode == 0:
+                    parts = (geom.stdout or "").strip().split()
+                    if len(parts) == 2 and all(p.isdigit() for p in parts):
+                        w, h = int(parts[0]), int(parts[1])
             if w > 0 and h > 0:
                 disp = display_env().get("DISPLAY", ":0")
                 display_spec = disp if disp.endswith(".0") else f"{disp}.0"
@@ -168,9 +286,17 @@ def take_screenshot(dest: Path) -> Path:
                     ],
                     timeout=15,
                 )
-                if r4.returncode == 0 and dest.exists() and dest.stat().st_size > 0:
+                if (
+                    r4.returncode == 0
+                    and dest.exists()
+                    and dest.stat().st_size > 0
+                    and _shot_is_usable(dest)
+                ):
                     return dest.resolve()
-                errors.append(f"ffmpeg x11grab rc={r4.returncode}")
+                errors.append(
+                    "ffmpeg x11grab: unusable (near-black XWayland root on GNOME Wayland)"
+                )
+                dest.unlink(missing_ok=True)
             else:
                 errors.append("ffmpeg: display geometry unavailable")
         except DeskAPIError as exc:
@@ -180,8 +306,8 @@ def take_screenshot(dest: Path) -> Path:
     raise DeskAPIError(
         500,
         "Screenshot failed (portal → gnome-screenshot → grim → ffmpeg). "
-        f"{detail}. Install: sudo apt install gnome-screenshot grim "
-        "ffmpeg python3-dbus python3-gi",
+        f"{detail}. Tip: `desk-proxy admin setup` grants Screenshot portal "
+        "permission; install python3-dbus python3-gi for the portal path.",
     )
 
 
@@ -210,8 +336,6 @@ def crop_image(src: Path, region: dict[str, int], dest: Path) -> Path:
         >>> crop_image(tmp, {"x": 999, "y": 999, "w": 10, "h": 10}, Path("/tmp/desk-proxy-shots/_crop_oob.png")) == tmp
         True
     """
-    from PIL import Image as PILImage
-
     src = Path(src)
     dest = Path(dest)
     try:

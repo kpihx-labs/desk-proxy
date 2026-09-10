@@ -62,7 +62,7 @@ def _ref(p: WindowRefPayload) -> str | int:
 
 
 def window_list(_payload: Any = None) -> dict[str, Any]:
-    """List visible X11/XWayland windows with geometry.
+    """List visible windows with geometry (AT-SPI on Wayland, else X11).
 
     Parameters:
         - (none): Payload may be null or ``{}``.
@@ -70,7 +70,7 @@ def window_list(_payload: Any = None) -> dict[str, Any]:
     Examples:
         - List everything visible:
             `desk-proxy do window-list '{}'`
-            → {"windows": [{"id": 12345678, "name": "Terminal", "x": 10, "y": 40, "width": 900, "height": 600}]}
+            → {"windows": [{"id": 12345678, "name": "Terminal", "app": "org.gnome.Terminal", "x": 10, "y": 40, "width": 900, "height": 600, "backend": "atspi"}]}
 
         - Empty desktop:
             `desk-proxy do window-list`
@@ -78,7 +78,7 @@ def window_list(_payload: Any = None) -> dict[str, Any]:
 
         - Multiple clients:
             `desk-proxy do window-list '{}'`
-            → {"windows": [{"id": 1, "name": "Cursor", "x": 0, "y": 0, "width": 1920, "height": 1080}, {"id": 2, "name": "Firefox", "x": 100, "y": 100, "width": 800, "height": 600}]}
+            → {"windows": [{"id": 1, "name": "Edge", "app": "Microsoft Edge", "x": 0, "y": 0, "width": 1920, "height": 1080, "backend": "atspi"}, {"id": 2, "name": "Bitwarden", "app": "bitwarden-app", "x": 5, "y": 134, "width": 950, "height": 790, "backend": "atspi"}]}
     """
     return {"windows": win_api.list_windows()}
 

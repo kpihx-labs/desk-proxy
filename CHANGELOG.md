@@ -1,6 +1,20 @@
 # CHANGELOG — desk-proxy
 
+## [0.1.2] — 2026-09-10
+
+### Fixed
+
+- **Wayland window-list root cause:** AT-SPI frames via system `/usr/bin/python3` (PyGObject) — no more XWayland-only stubs. Records include `app`, `role`, `backend`.
+- **Screenshot portal denied:** auto-grant PermissionStore `screenshot` for host/`desk-proxy` (same root cause as waveterm-only `yes`); reject near-black ffmpeg X11grab frames instead of returning junk ~37KB blacks.
+- **Geometry / session:** prefer GNOME Introspect `ScreenSize`; `display_env()` always injects DISPLAY/XAUTHORITY so agents need **zero** manual `export`; `session_type` reports `wayland` when WAYLAND_DISPLAY is injected.
+- `admin setup` now also grants Screenshot portal permission.
+
+### Changed
+
+- Version bump 0.1.1 → 0.1.2.
+
 ## [0.1.1] — 2026-09-10
+
 
 ### Changed
 
