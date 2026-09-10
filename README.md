@@ -17,6 +17,17 @@ Agent (bash) ──► desk-proxy do <action> ['{json}']
 
 ---
 
+## Remotes
+
+| Remote | URL |
+|--------|-----|
+| `github` | `git@github.com:kpihx-labs/desk-proxy.git` |
+| `gitlab` | `git@gitlab.com:kpihx-labs/proxies/desk-proxy.git` |
+
+Push both with `make push` (never `origin`).
+
+---
+
 ## Install
 
 ### Prerequisites (Ubuntu)

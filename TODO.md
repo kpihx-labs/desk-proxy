@@ -5,8 +5,8 @@
 - [ ] Optional AT-SPI accessibility tree actions (`a11y-list`, `a11y-click`) when `python3-pyatspi` is available — semantic clicks without OCR.
 - [ ] `screen-shot` option `scale` for downscaled overview frames (computer-use pattern).
 - [ ] Persist RemoteDesktop portal restore token if/when libei path is added (portal-use / Open-ALO style).
-- [ ] Dual remotes `github` + `gitlab` under `kpihx-labs/desk-proxy` + first `make push`.
-- [ ] Propose `k-desk` skill (Bash(desk-proxy *)) after KπX validation.
+- [x] Dual remotes `github` + `gitlab` under `kpihx-labs/desk-proxy` + first `make push` (2026-09-10).
+- [x] `k-desk` skill written (Bash(desk-proxy *)) — validated by KπX « fait 1 et 2 full ».
 
 ## Known limitations
 

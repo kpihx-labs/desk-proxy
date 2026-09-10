@@ -7,6 +7,7 @@
 - Removed useless `.env.example` — desk-proxy has **zero secrets**; settings are non-secret desktop preferences.
 - Config contract clarified: source of truth = `config.py` defaults + durable `~/.config/desk-proxy/config.json` (kept); optional `DESK_*` process env overrides only — never a `.env` file.
 - Docs updated: CONTRACT / README / AGENTS / `.gitignore` no longer advertise `.env.example`.
+- Dual remotes live: `github` `kpihx-labs/desk-proxy` + `gitlab` `kpihx-labs/proxies/desk-proxy` (topics `proxy,desktop,cli`); `make push` wired.
 
 ## [0.1.0] — 2026-09-10
 
