@@ -1,0 +1,28 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+dist/
+build/
+*.egg
+.venv/
+venv/
+.ruff_cache/
+.pytest_cache/
+
+# Env
+.env
+!/.env.example
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*.py~
+*~
+
+# Runtime
+/tmp/
+# uv.lock is kept in-repo when present (reproducible builds)

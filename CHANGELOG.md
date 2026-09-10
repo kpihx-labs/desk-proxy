@@ -1,0 +1,25 @@
+# CHANGELOG — desk-proxy
+
+## [0.1.0] — 2026-09-10
+
+### Added
+
+- Initial production release: **24** flat kebab `do` actions on tick/mail ADN (`meta`+`data`, HITL, autosave, docstring `--help`).
+- Screen: `screen-info`, `screen-shot`, `screen-ocr`, `screen-find` (tesseract TSV centers).
+- Windows: list/get/focus/activate/close/move/resize/minimize (xdotool + wmctrl).
+- Mouse: get/move/click/drag/scroll with xdotool → ydotool fallback.
+- Keyboard: type/key with wtype → xdotool → ydotool.
+- Clipboard: get/set (wl-clipboard / xclip); set is HITL-gated.
+- Control: `wait`, HITL `chain`, HITL `raw` escape hatch.
+- Admin: `doctor`, `status`, `setup`, `purge` (always JSON).
+- Screenshot backend chain beyond desk-mcp: XDG portal → gnome-screenshot → grim → ffmpeg x11grab.
+- Display env recovery for agent shells (DISPLAY/WAYLAND/DBUS + Mutter `XAUTHORITY`).
+- `make check` green: smoke (REGISTRY==24) + ruff + pyright + 16 pytest.
+- Live-verified on kpihx-ubuntu Wayland: screen-info/shot/ocr/find(path), mouse move/click/drag, keyboard-key, clipboard-get, window-list, admin doctor/status/setup.
+- Hardening: `screen-find`/`screen-ocr` honor `path` (no spurious recapture); xdotool moves drop hanging `--sync`; drag uses a single argv chain.
+
+### Refonte from desk-mcp
+
+- Dropped FastMCP stdio transport; agents call the CLI via bash.
+- Renamed MCP verbs to domain-first kebab (`screenshot` → `screen-shot`, …).
+- Added OCR, drag, window management, clipboard, chain, raw, HITL, admin ADN.
