@@ -15,7 +15,7 @@ Status: Production v0.1.1 — 24 actions
 Binary: `desk-proxy` → `do` + `admin`  
 ADN: tick-proxy / mail-proxy / tg-proxy  
 Ancestor: `$HOME/Work/AI/MCPs/desk_mcp` (`desk-mcp` MCP, archived as content reference)  
-Path: `$HOME/KpihX-Labs/Proxies/desk-proxy/`  
+Path: `$HOME/Labs/KpihX-Labs/Proxies/desk-proxy/`  
 Remotes: `github` → `git@github.com:kpihx-labs/desk-proxy.git` · `gitlab` → `git@gitlab.com:kpihx-labs/proxies/desk-proxy.git`
 
 ## Architecture Rules

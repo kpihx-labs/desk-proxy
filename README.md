@@ -40,7 +40,7 @@ sudo apt install xdotool wmctrl ydotool wtype tesseract-ocr tesseract-ocr-eng te
 ### Editable
 
 ```bash
-cd ~/KpihX-Labs/Proxies/desk-proxy
+cd ~/Labs/KpihX-Labs/Proxies/desk-proxy
 uv tool install --editable . --force
 desk-proxy admin setup
 desk-proxy admin doctor
